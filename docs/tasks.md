@@ -6,7 +6,7 @@
 - Phase 2: 3/3 ✅
 - Phase 3: 1/1 ✅
 - Phase 4: 1/1 ✅
-- Phase 5: 2/3
+- Phase 5: 4/4 ✅
 
 ## Phase 1 — API基盤
 
@@ -32,4 +32,5 @@
 
 - [x] Fly.ioデプロイ・動作確認
 - [x] 本番APNs切り替え
-- [ ] kazahanaアプリ側のプッシュ通知統合
+- [x] kazahana-ios プッシュ通知統合・実機テスト完了
+- [x] kazahana-android プッシュ通知統合・実機テスト完了
