@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+.env
+secrets/
+*.p8
+firebase-adminsdk*.json

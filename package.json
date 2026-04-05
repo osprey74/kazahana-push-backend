@@ -1,0 +1,19 @@
+{
+  "name": "kazahana-push-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.7.0",
+    "@atproto/api": "^0.13.0",
+    "node-apn": "^3.0.0",
+    "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}
