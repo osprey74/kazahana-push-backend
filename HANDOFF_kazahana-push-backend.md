@@ -441,5 +441,84 @@ CMD ["bun", "run", "src/index.ts"]
 
 ---
 
+## クライアント側改修に必要な情報
+
+### バックエンド接続情報
+
+| 項目 | 値 |
+|---|---|
+| エンドポイント | `https://kazahana-push-backend.fly.dev` |
+| 認証ヘッダー | `Authorization: Bearer {API_SECRET}` |
+| トークン登録 | `POST /api/device-token` |
+| トークン削除 | `DELETE /api/device-token` |
+
+`API_SECRET` はビルド時にアプリに埋め込む。値はFly.ioシークレットに設定済み。
+
+### リクエスト例
+
+```typescript
+// 登録
+POST /api/device-token
+Headers: { "Authorization": "Bearer {API_SECRET}", "Content-Type": "application/json" }
+Body: { "did": "did:plc:xxxxxxxxxxxx", "token": "デバイストークン", "platform": "ios" | "android" }
+
+// 削除
+DELETE /api/device-token
+Headers: { "Authorization": "Bearer {API_SECRET}", "Content-Type": "application/json" }
+Body: { "did": "did:plc:xxxxxxxxxxxx", "platform": "ios" | "android" }
+```
+
+### 通知ペイロード（アプリ側で受信する構造）
+
+**iOS（APNs）:**
+```json
+{
+  "aps": {
+    "alert": { "title": "kazahana", "body": "@actor さんが @target をフォローしました" },
+    "sound": "default"
+  },
+  "target_did": "did:plc:xxxxxxxxxxxx"
+}
+```
+
+**Android（FCM）:**
+```json
+{
+  "notification": { "title": "kazahana", "body": "@actor さんが @target の投稿にいいねしました" },
+  "data": { "target_did": "did:plc:xxxxxxxxxxxx" }
+}
+```
+
+### 各プラットフォームの実装タスク
+
+**iOS（kazahana-ios）:**
+1. `UNUserNotificationCenter` で通知許可を取得
+2. APNsデバイストークンを取得し `POST /api/device-token` に登録
+3. ログアウト時・通知オフ時に `DELETE /api/device-token` を呼ぶ
+4. アプリ起動・フォアグラウンド復帰時に `setBadgeCount(0)` でバッジリセット
+5. 通知タップ時、ペイロードの `target_did` で対象アカウントに切り替えてから通知一覧を表示
+
+**Android（kazahana-android）:**
+1. `FirebaseMessaging.getInstance().token` でFCMトークンを取得
+2. `POST /api/device-token` に登録
+3. ログアウト時・通知オフ時に `DELETE /api/device-token` を呼ぶ
+4. 通知タップ時、`data.target_did` で対象アカウントに切り替えてから通知一覧を表示
+
+### 現在のバックエンド状態（2026-04-05時点）
+
+| コンポーネント | 状態 | 備考 |
+|---|---|---|
+| ヘルスチェック | ✅ passing | `GET /health` |
+| Jetstream | ✅ connected | follow/like/repost を購読中 |
+| APNs（iOS） | ✅ initialized | **Sandbox モード**（`APNS_PRODUCTION=false`） |
+| FCM（Android） | ⏳ 未設定 | Firebase認証ファイル取得後に `flyctl secrets set` で追加 |
+
+### 本番切り替え手順
+
+- **APNs本番化**（App Store配布時）: `flyctl secrets set APNS_PRODUCTION=true`
+- **FCM有効化**: Firebase Consoleからサービスアカウントキー（JSON）を取得後、`flyctl secrets set GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat firebase-adminsdk.json)" FCM_PROJECT_ID=kazahana-android` を実行し、`src/services/fcm.ts` を環境変数からJSON読み込みに対応させる
+
+---
+
 *作成日：2026-04-05*
 *対象：Claude Code向けHANDOFF*
