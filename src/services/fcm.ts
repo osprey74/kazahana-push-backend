@@ -5,15 +5,17 @@ let fcmInitialized = false;
 
 export function initFcm() {
   const projectId = process.env.FCM_PROJECT_ID;
-  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const credentialsJson = process.env.FCM_SERVICE_ACCOUNT_JSON;
 
-  if (!projectId || !credentialsPath) {
+  if (!projectId || !credentialsJson) {
     console.warn("FCM not configured — Android push disabled");
     return;
   }
 
+  const serviceAccount = JSON.parse(credentialsJson);
+
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+    credential: admin.credential.cert(serviceAccount),
     projectId,
   });
 
