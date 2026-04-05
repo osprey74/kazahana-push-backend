@@ -9,11 +9,21 @@ const WANTED_COLLECTIONS = [
   "app.bsky.graph.follow",
   "app.bsky.feed.like",
   "app.bsky.feed.repost",
+  "app.bsky.feed.post",
 ];
 
 let cursor: number | undefined = undefined;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 60000;
+
+type NotificationType = "follow" | "like" | "repost" | "reply" | "mention" | "quote";
+
+interface MentionFacet {
+  features: Array<{
+    $type: string;
+    did?: string;
+  }>;
+}
 
 interface JetstreamEvent {
   time_us: number;
@@ -24,6 +34,15 @@ interface JetstreamEvent {
     operation: string;
     record?: {
       subject?: string | { uri: string; cid: string };
+      reply?: {
+        parent: { uri: string };
+        root: { uri: string };
+      };
+      facets?: MentionFacet[];
+      embed?: {
+        $type: string;
+        record?: { uri: string };
+      };
     };
   };
 }
@@ -42,47 +61,99 @@ function extractDidFromUri(uri: string): string | null {
   return match ? match[1] : null;
 }
 
-function handleEvent(event: JetstreamEvent): void {
-  if (event.kind !== "commit") return;
+/** 通知対象を収集（1イベントから複数通知が発生しうる） */
+function collectNotifications(
+  event: JetstreamEvent
+): Array<{ type: NotificationType; targetDid: string }> {
+  if (event.kind !== "commit") return [];
 
   const commit = event.commit;
-  if (!commit || commit.operation !== "create" || !commit.record) return;
+  if (!commit || commit.operation !== "create" || !commit.record) return [];
 
   const actorDid = event.did;
-  let targetDid: string | null = null;
-  let type: "follow" | "like" | "repost" | null = null;
+  const results: Array<{ type: NotificationType; targetDid: string }> = [];
 
   switch (commit.collection) {
     case "app.bsky.graph.follow": {
-      // subject はフォローされた側のDID（文字列）
       const subject = commit.record.subject;
       if (typeof subject === "string") {
-        targetDid = subject;
-        type = "follow";
+        results.push({ type: "follow", targetDid: subject });
       }
       break;
     }
     case "app.bsky.feed.like": {
       const subject = commit.record.subject;
       if (subject && typeof subject === "object" && "uri" in subject) {
-        targetDid = extractDidFromUri(subject.uri);
-        type = "like";
+        const did = extractDidFromUri(subject.uri);
+        if (did) results.push({ type: "like", targetDid: did });
       }
       break;
     }
     case "app.bsky.feed.repost": {
       const subject = commit.record.subject;
       if (subject && typeof subject === "object" && "uri" in subject) {
-        targetDid = extractDidFromUri(subject.uri);
-        type = "repost";
+        const did = extractDidFromUri(subject.uri);
+        if (did) results.push({ type: "repost", targetDid: did });
+      }
+      break;
+    }
+    case "app.bsky.feed.post": {
+      const record = commit.record;
+      const notifiedDids = new Set<string>();
+
+      // リプライ
+      if (record.reply) {
+        const parentDid = extractDidFromUri(record.reply.parent.uri);
+        if (parentDid) {
+          results.push({ type: "reply", targetDid: parentDid });
+          notifiedDids.add(parentDid);
+        }
+      }
+
+      // 引用
+      if (record.embed) {
+        const embedType = record.embed.$type;
+        // app.bsky.embed.record または app.bsky.embed.recordWithMedia
+        if (
+          (embedType === "app.bsky.embed.record" ||
+            embedType === "app.bsky.embed.recordWithMedia") &&
+          record.embed.record?.uri
+        ) {
+          const quotedDid = extractDidFromUri(record.embed.record.uri);
+          if (quotedDid && !notifiedDids.has(quotedDid)) {
+            results.push({ type: "quote", targetDid: quotedDid });
+            notifiedDids.add(quotedDid);
+          }
+        }
+      }
+
+      // メンション
+      if (record.facets) {
+        for (const facet of record.facets) {
+          for (const feature of facet.features) {
+            if (
+              feature.$type === "app.bsky.richtext.facet#mention" &&
+              feature.did &&
+              !notifiedDids.has(feature.did)
+            ) {
+              results.push({ type: "mention", targetDid: feature.did });
+              notifiedDids.add(feature.did);
+            }
+          }
+        }
       }
       break;
     }
   }
 
-  if (targetDid && type && targetDid !== actorDid) {
-    // 自分自身への通知は送らない
-    notify(type, actorDid, targetDid).catch((err) =>
+  // 自分自身への通知を除外
+  return results.filter((r) => r.targetDid !== actorDid);
+}
+
+function handleEvent(event: JetstreamEvent): void {
+  const notifications = collectNotifications(event);
+  for (const { type, targetDid } of notifications) {
+    notify(type, event.did, targetDid).catch((err) =>
       console.error("Notification error:", err)
     );
   }

@@ -3,7 +3,7 @@ import { getHandle } from "./handleCache";
 import { sendApns } from "./apns";
 import { sendFcm } from "./fcm";
 
-type NotificationType = "follow" | "like" | "repost";
+type NotificationType = "follow" | "like" | "repost" | "reply" | "mention" | "quote";
 
 interface DeviceToken {
   token: string;
@@ -26,6 +26,16 @@ function buildMessage(
       return `@${actorHandle} さんが @${targetHandle} の投稿にいいねしました`;
     case "repost":
       return `@${actorHandle} さんが @${targetHandle} の投稿をリポストしました`;
+    case "reply":
+      return `@${actorHandle} さんが @${targetHandle} の投稿に返信しました`;
+    case "mention":
+      return `@${actorHandle} さんが @${targetHandle} をメンションしました`;
+    case "quote":
+      return `@${actorHandle} さんが @${targetHandle} の投稿を引用しました`;
+    default: {
+      const _exhaustive: never = type;
+      return _exhaustive;
+    }
   }
 }
 

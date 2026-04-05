@@ -153,7 +153,8 @@ const JETSTREAM_URL =
   "wss://jetstream2.us-east.bsky.network/subscribe" +
   "?wantedCollections=app.bsky.graph.follow" +
   "&wantedCollections=app.bsky.feed.like" +
-  "&wantedCollections=app.bsky.feed.repost";
+  "&wantedCollections=app.bsky.feed.repost" +
+  "&wantedCollections=app.bsky.feed.post";
 ```
 
 ### イベント処理フロー
@@ -181,12 +182,21 @@ DBアクセスはヒット時のみとし、I/Oを最小化する。
 | `app.bsky.graph.follow` | フォローされた側 | `commit.record.subject` |
 | `app.bsky.feed.like` | いいねされた投稿の作者 | `commit.record.subject.uri`（`at://did:plc:xxx/...` からDIDを抽出） |
 | `app.bsky.feed.repost` | リポストされた投稿の作者 | 同上 |
+| `app.bsky.feed.post`（リプライ） | リプライ先投稿の作者 | `commit.record.reply.parent.uri` からDIDを抽出 |
+| `app.bsky.feed.post`（引用） | 引用元投稿の作者 | `commit.record.embed.record.uri` からDIDを抽出（`$type` が `app.bsky.embed.record` または `app.bsky.embed.recordWithMedia`） |
+| `app.bsky.feed.post`（メンション） | メンションされたユーザー | `commit.record.facets[].features[]` から `$type === "app.bsky.richtext.facet#mention"` の `did` |
 
 ### リポストへのリポスト・リポストへのいいねについて
 
 AT Protocolの仕様上、`like` および `repost` の `subject.uri` は常に**オリジナル投稿のURIを指す**。
 「リポストへのいいね」「リポストへのリポスト」も元投稿者に通知が届く。
 これはBluesky公式アプリと同じ挙動であり、追加実装は不要。
+
+### postイベントの重複通知防止
+
+1つの投稿がリプライ・引用・メンションを同時に含む場合がある（例：引用リプライ中にメンション）。
+同一DIDに対して1イベントから複数の通知が飛ぶことを防ぐため、`notifiedDids` の `Set` で重複を排除する。
+優先順位: **リプライ > 引用 > メンション**（先に検出された通知タイプが優先される）。
 
 ### 再接続処理
 
@@ -254,6 +264,9 @@ actor（操作した人）と target（操作された側のkazahanaアカウン
 | follow | `@{actor} さんが @{target} をフォローしました` |
 | like | `@{actor} さんが @{target} の投稿にいいねしました` |
 | repost | `@{actor} さんが @{target} の投稿をリポストしました` |
+| reply | `@{actor} さんが @{target} の投稿に返信しました` |
+| mention | `@{actor} さんが @{target} をメンションしました` |
+| quote | `@{actor} さんが @{target} の投稿を引用しました` |
 
 ### マルチユーザー対応
 
