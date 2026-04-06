@@ -2,6 +2,7 @@ import { db } from "../db/client";
 import { getHandle, getPostText } from "./handleCache";
 import { sendApns } from "./apns";
 import { sendFcm } from "./fcm";
+import { recordNotification } from "./stats";
 
 type NotificationType = "follow" | "like" | "repost" | "reply" | "mention" | "quote";
 
@@ -102,6 +103,9 @@ export async function notify(
 
   const title = buildTitle(type, actorHandle);
   const body = buildBody(type, targetHandle, resolvedText);
+
+  // 統計記録
+  recordNotification(type, targetDid);
 
   // 各トークンに送信
   await Promise.all(
