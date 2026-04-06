@@ -25,6 +25,7 @@ export function initFcm() {
 
 export async function sendFcm(
   token: string,
+  title: string,
   body: string,
   targetDid: string
 ): Promise<void> {
@@ -34,7 +35,7 @@ export async function sendFcm(
     await admin.messaging().send({
       token,
       notification: {
-        title: "kazahana",
+        title,
         body,
       },
       data: {

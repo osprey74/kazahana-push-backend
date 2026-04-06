@@ -27,6 +27,7 @@ export function initApns() {
 
 export async function sendApns(
   token: string,
+  title: string,
   body: string,
   targetDid: string
 ): Promise<void> {
@@ -34,7 +35,7 @@ export async function sendApns(
 
   const notification = new apn.Notification();
   notification.topic = process.env.APNS_BUNDLE_ID || "com.osprey74.kazahana";
-  notification.alert = { title: "kazahana", body };
+  notification.alert = { title, body };
   notification.sound = "default";
   notification.payload = { target_did: targetDid };
 

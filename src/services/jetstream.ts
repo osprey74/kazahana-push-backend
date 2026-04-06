@@ -33,6 +33,7 @@ interface JetstreamEvent {
     collection: string;
     operation: string;
     record?: {
+      text?: string;
       subject?: string | { uri: string; cid: string };
       reply?: {
         parent: { uri: string };
@@ -61,17 +62,24 @@ function extractDidFromUri(uri: string): string | null {
   return match ? match[1] : null;
 }
 
+interface Notification {
+  type: NotificationType;
+  targetDid: string;
+  postText?: string;    // イベントから直接取得できる投稿本文（reply/mention/quote）
+  subjectUri?: string;  // いいね・リポスト対象のAT URI（API取得用）
+}
+
 /** 通知対象を収集（1イベントから複数通知が発生しうる） */
 function collectNotifications(
   event: JetstreamEvent
-): Array<{ type: NotificationType; targetDid: string }> {
+): Notification[] {
   if (event.kind !== "commit") return [];
 
   const commit = event.commit;
   if (!commit || commit.operation !== "create" || !commit.record) return [];
 
   const actorDid = event.did;
-  const results: Array<{ type: NotificationType; targetDid: string }> = [];
+  const results: Notification[] = [];
 
   switch (commit.collection) {
     case "app.bsky.graph.follow": {
@@ -85,7 +93,7 @@ function collectNotifications(
       const subject = commit.record.subject;
       if (subject && typeof subject === "object" && "uri" in subject) {
         const did = extractDidFromUri(subject.uri);
-        if (did) results.push({ type: "like", targetDid: did });
+        if (did) results.push({ type: "like", targetDid: did, subjectUri: subject.uri });
       }
       break;
     }
@@ -93,19 +101,20 @@ function collectNotifications(
       const subject = commit.record.subject;
       if (subject && typeof subject === "object" && "uri" in subject) {
         const did = extractDidFromUri(subject.uri);
-        if (did) results.push({ type: "repost", targetDid: did });
+        if (did) results.push({ type: "repost", targetDid: did, subjectUri: subject.uri });
       }
       break;
     }
     case "app.bsky.feed.post": {
       const record = commit.record;
+      const postText = record.text;
       const notifiedDids = new Set<string>();
 
       // リプライ
       if (record.reply) {
         const parentDid = extractDidFromUri(record.reply.parent.uri);
         if (parentDid) {
-          results.push({ type: "reply", targetDid: parentDid });
+          results.push({ type: "reply", targetDid: parentDid, postText });
           notifiedDids.add(parentDid);
         }
       }
@@ -113,7 +122,6 @@ function collectNotifications(
       // 引用
       if (record.embed) {
         const embedType = record.embed.$type;
-        // app.bsky.embed.record または app.bsky.embed.recordWithMedia
         if (
           (embedType === "app.bsky.embed.record" ||
             embedType === "app.bsky.embed.recordWithMedia") &&
@@ -121,7 +129,7 @@ function collectNotifications(
         ) {
           const quotedDid = extractDidFromUri(record.embed.record.uri);
           if (quotedDid && !notifiedDids.has(quotedDid)) {
-            results.push({ type: "quote", targetDid: quotedDid });
+            results.push({ type: "quote", targetDid: quotedDid, postText });
             notifiedDids.add(quotedDid);
           }
         }
@@ -136,7 +144,7 @@ function collectNotifications(
               feature.did &&
               !notifiedDids.has(feature.did)
             ) {
-              results.push({ type: "mention", targetDid: feature.did });
+              results.push({ type: "mention", targetDid: feature.did, postText });
               notifiedDids.add(feature.did);
             }
           }
@@ -152,9 +160,9 @@ function collectNotifications(
 
 function handleEvent(event: JetstreamEvent): void {
   const notifications = collectNotifications(event);
-  for (const { type, targetDid } of notifications) {
-    notify(type, event.did, targetDid).catch((err) =>
-      console.error("Notification error:", err)
+  for (const n of notifications) {
+    notify(n.type, event.did, n.targetDid, n.postText, n.subjectUri).catch(
+      (err) => console.error("Notification error:", err)
     );
   }
 }
