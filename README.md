@@ -113,6 +113,21 @@ Deployed on Fly.io. See `fly.toml` for configuration.
 flyctl deploy
 ```
 
+### Recovery
+
+If the Fly.io host hosting this app becomes unreachable (`PU03` proxy error / `💀` in `fly status`), use the one-shot recovery script:
+
+```bash
+scripts/recover.sh              # interactive (confirms before destructive ops)
+scripts/recover.sh --yes        # non-interactive
+scripts/recover.sh --dry-run    # preview only
+scripts/recover.sh --help       # see incident notes & detailed flow
+```
+
+Windows / PowerShell: use `scripts\recover.ps1` (forwards to the same script).
+
+The script auto-detects whether to restart the existing machine or do a full rebuild (destroy machine + create new volume + deploy). A rebuild wipes the `device_tokens` table; clients re-register automatically on next launch.
+
 ## Platform Support
 
 | Platform | Notification method |
