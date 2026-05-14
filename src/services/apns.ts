@@ -42,6 +42,9 @@ export async function sendApns(
   const result = await apnsProvider.send(notification, token);
 
   for (const failure of result.failed) {
+    console.log(
+      `APNs FAIL ${token.slice(0, 8)} did=${targetDid.slice(0, 24)} status=${failure.status} reason=${failure.response?.reason ?? "-"} error=${failure.error ?? "-"}`
+    );
     // 410 Gone = トークン無効
     if (failure.status === "410" || failure.response?.reason === "Unregistered") {
       console.log(`APNs: removing invalid token ${token.slice(0, 8)}...`);
