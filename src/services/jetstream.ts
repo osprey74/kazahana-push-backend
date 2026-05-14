@@ -15,6 +15,7 @@ const WANTED_COLLECTIONS = [
 let cursor: number | undefined = undefined;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 60000;
+const MESSAGE_TIMEOUT_MS = 60000;
 
 type NotificationType = "follow" | "like" | "repost" | "reply" | "mention" | "quote";
 
@@ -172,13 +173,35 @@ function connect(): void {
   console.log(`Jetstream: connecting to ${url.slice(0, 80)}...`);
 
   const ws = new WebSocket(url);
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+  // Jetstream は通常絶え間なくイベントが流れるため、一定時間無音なら
+  // 半開きソケットと判断して強制的に close → 再接続させる
+  const resetWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      console.warn(
+        `Jetstream: no message for ${MESSAGE_TIMEOUT_MS}ms, forcing reconnect`
+      );
+      ws.close();
+    }, MESSAGE_TIMEOUT_MS);
+  };
+
+  const clearWatchdog = () => {
+    if (watchdog) {
+      clearTimeout(watchdog);
+      watchdog = null;
+    }
+  };
 
   ws.addEventListener("open", () => {
     console.log("Jetstream: connected");
     reconnectDelay = 1000; // リセット
+    resetWatchdog();
   });
 
   ws.addEventListener("message", (event) => {
+    resetWatchdog();
     try {
       const data = JSON.parse(event.data as string) as JetstreamEvent;
       cursor = data.time_us;
@@ -189,6 +212,7 @@ function connect(): void {
   });
 
   ws.addEventListener("close", () => {
+    clearWatchdog();
     console.log(
       `Jetstream: disconnected, reconnecting in ${reconnectDelay}ms...`
     );
