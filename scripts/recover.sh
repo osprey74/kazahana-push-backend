@@ -3,7 +3,7 @@
 # kazahana-push-backend Recovery Script
 # =============================================================================
 #
-# 2026-05-13 の障害概要:
+# 2026-05-13 の障害概要 (unreachable 分岐):
 #   Fly.io 個別ワーカーホスト（nrt zone 1ab3）が unreachable になり、
 #   machine と同ホスト上の volume が応答不能に。Fly proxy ログでは
 #     [PU03] unreachable worker host. this is a Fly issue.
@@ -12,6 +12,18 @@
 #   fly deploy で復旧した。device_tokens テーブルは消失したが、
 #   kazahana-ios/android は次回起動時に自動再登録するため、
 #   実害は復旧までの通知不達のみだった。
+#
+# 2026-05-14 の障害概要 (down 分岐):
+#   23:00 / 23:12 / 23:38 JST 頃に Sentinel で約 4 分間の連続無応答を 3 回検知。
+#   machine は started・プロセスも生存だがイベントループのみブロック。
+#   `fly logs` に node_modules/http2/lib/protocol/connection.js:355 の
+#   MaxListenersExceededWarning（wakeup リスナー累積）が出ており、
+#   node-apn 内部の旧 http2 パッケージで HTTP/2 フロー制御デッドロックが発生。
+#   23:39 JST に APNs クライアントを node-apn から Bun fetch + WebCrypto の
+#   自前実装に置換してデプロイ済み（per-call AbortSignal タイムアウト 10s）。
+#   新実装では同種のデッドロックは原理的に発生しない想定だが、もし再発した
+#   場合は `down` と判定され、本スクリプトの machine restart 分岐で復旧する
+#   （volume 維持・device_tokens 保持）。
 #
 # このスクリプトの目的:
 #   再発時に上記復旧手順をワンショットで実行する。

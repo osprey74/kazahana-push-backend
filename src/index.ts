@@ -6,6 +6,11 @@ import { stats } from "./routes/stats";
 import { startJetstream } from "./services/jetstream";
 import { logStats } from "./services/stats";
 
+process.on("warning", (warning) => {
+  console.warn(`[warning] ${warning.name}: ${warning.message}`);
+  if (warning.stack) console.warn(warning.stack);
+});
+
 const app = new Hono();
 
 app.use("*", logger());

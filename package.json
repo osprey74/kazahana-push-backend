@@ -9,7 +9,6 @@
   "dependencies": {
     "hono": "^4.7.0",
     "@atproto/api": "^0.13.0",
-    "node-apn": "^3.0.0",
     "firebase-admin": "^13.0.0"
   },
   "devDependencies": {

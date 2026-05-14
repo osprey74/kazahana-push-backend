@@ -25,7 +25,7 @@ Bluesky Jetstream (WebSocket)
 | Runtime | [Bun](https://bun.sh) |
 | Web framework | [Hono](https://hono.dev) |
 | Database | SQLite (bun:sqlite, WAL mode) |
-| Push (iOS) | APNs HTTP/2 via [node-apn](https://github.com/node-apn/node-apn) |
+| Push (iOS) | APNs HTTP/2 via Bun `fetch` + WebCrypto (in-house) |
 | Push (Android) | FCM HTTP v1 via [firebase-admin](https://firebase.google.com/docs/admin/setup) |
 | Hosting | [Fly.io](https://fly.io) (nrt region) |
 

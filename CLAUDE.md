@@ -10,7 +10,7 @@ Bluesky Jetstreamを購読し、フォロー・いいね・リポストの通知
 - **ランタイム**: Bun
 - **Webフレームワーク**: Hono
 - **DB**: SQLite（bun:sqlite, WALモード）
-- **プッシュ通知**: APNs HTTP/2（node-apn）, FCM HTTP v1（firebase-admin）
+- **プッシュ通知**: APNs HTTP/2（Bun `fetch` + WebCrypto 自前実装）, FCM HTTP v1（firebase-admin）
 - **ホスティング**: Fly.io（nrtリージョン）
 
 ## コマンド
