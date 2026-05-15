@@ -1,3 +1,4 @@
+import http2 from "node:http2";
 import { db } from "../db/client";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -72,7 +73,7 @@ export function initApns() {
   apnsHost = process.env.APNS_PRODUCTION === "true"
     ? "https://api.push.apple.com"
     : "https://api.sandbox.push.apple.com";
-  console.log(`APNs (Bun fetch) initialized — host=${apnsHost} bundle=${bundleId}`);
+  console.log(`APNs (node:http2) initialized — host=${apnsHost} bundle=${bundleId}`);
 }
 
 export async function sendApns(
@@ -96,46 +97,92 @@ export async function sendApns(
     target_did: targetDid,
   });
 
-  let res: Response;
-  try {
-    res = await fetch(`${apnsHost}/3/device/${token}`, {
-      method: "POST",
-      headers: {
-        authorization: `bearer ${jwt}`,
-        "apns-topic": bundleId!,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-        "content-type": "application/json",
-      },
-      body: payload,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  const shortToken = token.slice(0, 8);
+  const shortDid = targetDid.slice(0, 24);
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const client = http2.connect(apnsHost!);
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      console.log(`APNs TIMEOUT ${shortToken} did=${shortDid}`);
+      try { client.destroy(); } catch { /* ignore */ }
+      finish();
+    }, REQUEST_TIMEOUT_MS);
+
+    client.on("error", (err) => {
+      if (settled) return;
+      console.log(`APNs CONN ERROR ${shortToken} did=${shortDid} ${err.message}`);
+      clearTimeout(timer);
+      try { client.destroy(); } catch { /* ignore */ }
+      finish();
     });
-  } catch (e) {
-    const name = (e as Error).name;
-    if (name === "TimeoutError" || name === "AbortError") {
-      console.log(`APNs TIMEOUT ${token.slice(0, 8)} did=${targetDid.slice(0, 24)}`);
-    } else {
-      console.log(`APNs ERROR ${token.slice(0, 8)} did=${targetDid.slice(0, 24)} ${e}`);
-    }
-    return;
-  }
 
-  if (res.ok) return;
+    const req = client.request({
+      ":method": "POST",
+      ":path": `/3/device/${token}`,
+      authorization: `bearer ${jwt}`,
+      "apns-topic": bundleId!,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-type": "application/json",
+    });
 
-  let reason: string | undefined;
-  try {
-    const json = (await res.json()) as { reason?: string };
-    reason = json.reason;
-  } catch {
-    // body may be empty
-  }
+    let status = 0;
+    const chunks: Buffer[] = [];
 
-  console.log(
-    `APNs FAIL ${token.slice(0, 8)} did=${targetDid.slice(0, 24)} status=${res.status} reason=${reason ?? "-"}`
-  );
+    req.on("response", (headers) => {
+      status = Number(headers[":status"]);
+    });
 
-  if (res.status === 410 || reason === "Unregistered" || reason === "BadDeviceToken") {
-    console.log(`APNs: removing invalid token ${token.slice(0, 8)}...`);
-    db.run(`DELETE FROM device_tokens WHERE token = ?`, [token]);
-  }
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      clearTimeout(timer);
+      if (settled) return;
+
+      if (status >= 200 && status < 300) {
+        try { client.close(); } catch { /* ignore */ }
+        finish();
+        return;
+      }
+
+      let reason: string | undefined;
+      try {
+        const responseBody = Buffer.concat(chunks).toString("utf8");
+        if (responseBody) reason = JSON.parse(responseBody).reason;
+      } catch { /* body may be empty or non-JSON */ }
+
+      console.log(
+        `APNs FAIL ${shortToken} did=${shortDid} status=${status} reason=${reason ?? "-"}`
+      );
+
+      if (status === 410 || reason === "Unregistered" || reason === "BadDeviceToken") {
+        console.log(`APNs: removing invalid token ${shortToken}...`);
+        db.run(`DELETE FROM device_tokens WHERE token = ?`, [token]);
+      }
+
+      try { client.close(); } catch { /* ignore */ }
+      finish();
+    });
+
+    req.on("error", (err) => {
+      if (settled) return;
+      console.log(`APNs REQ ERROR ${shortToken} did=${shortDid} ${err.message}`);
+      clearTimeout(timer);
+      try { client.destroy(); } catch { /* ignore */ }
+      finish();
+    });
+
+    req.end(payload);
+  });
 }

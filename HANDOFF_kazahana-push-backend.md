@@ -29,7 +29,7 @@ Bluesky Jetstreamを購読し、kazahanaユーザー全員に対して
 | ランタイム | **Bun** | TypeScript-native、高速、SQLite内蔵 |
 | Webフレームワーク | **Hono** | 軽量・型安全・Bun対応 |
 | DB | **SQLite（bun:sqlite）** | 追加コストゼロ、このスケールで十分 |
-| プッシュ（iOS） | **APNs HTTP/2（JWT認証）** | Bun `fetch` + WebCrypto 自前実装 |
+| プッシュ（iOS） | **APNs HTTP/2（JWT認証）** | `node:http2` + WebCrypto 自前実装 |
 | プッシュ（Android） | **FCM HTTP v1** | firebase-admin SDK |
 | ホスティング | **Fly.io（nrtリージョン）** | 月$5〜10、既存インフラと統一 |
 
@@ -275,7 +275,7 @@ actor（操作した人）と target（操作された側のkazahanaアカウン
 ### APNs（iOS）
 
 ```typescript
-// Bun fetch + WebCrypto 自前実装（src/services/apns.ts）
+// node:http2 + WebCrypto 自前実装（src/services/apns.ts）
 {
   aps: {
     alert: {
